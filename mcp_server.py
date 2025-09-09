@@ -597,8 +597,8 @@ graph TD
         name_map = self._generate_friendly_names()
         return name_map.get(technical_name.upper(), technical_name.title())
     
-    async def run(self):
-        """Run the MCP server"""
+    async def run_stdio(self):
+        """Run the MCP server using stdio (for local VS Code)"""
         from mcp.server.stdio import stdio_server
         
         async with stdio_server() as (read_stream, write_stream):
@@ -614,11 +614,51 @@ graph TD
                     )
                 )
             )
+    
+    async def run_http(self, host='0.0.0.0', port=8080):
+        """Run the MCP server using HTTP (for remote VS Code)"""
+        http_server = HTTPMCPServer(self, host, port)
+        runner = await http_server.start_server()
+        
+        try:
+            # Keep the server running
+            while True:
+                await asyncio.sleep(1)
+        except KeyboardInterrupt:
+            logger.info("Shutting down HTTP server...")
+        finally:
+            await runner.cleanup()
+
+
+async def main():
+    """Main entry point with support for both local and remote modes"""
+    parser = argparse.ArgumentParser(description='Mainframe Codebase Analysis MCP Server')
+    parser.add_argument('--mode', choices=['stdio', 'http'], default='stdio',
+                      help='Server mode: stdio for local VS Code, http for remote access')
+    parser.add_argument('--host', default='0.0.0.0', 
+                      help='Host to bind HTTP server (default: 0.0.0.0)')
+    parser.add_argument('--port', type=int, default=8080,
+                      help='Port for HTTP server (default: 8080)')
+    parser.add_argument('--ssl-cert', help='SSL certificate file for HTTPS')
+    parser.add_argument('--ssl-key', help='SSL private key file for HTTPS')
+    
+    args = parser.parse_args()
+    
+    # Create MCP server instance
+    mcp_server = MainframeMCPServer()
+    
+    if args.mode == 'stdio':
+        logger.info("🚀 Starting MCP Server in STDIO mode (for local VS Code)")
+        await mcp_server.run_stdio()
+    else:
+        logger.info(f"🚀 Starting MCP Server in HTTP mode on {args.host}:{args.port}")
+        await mcp_server.run_http(args.host, args.port)
+
+
 
 def main():
     """Main entry point"""
-    server = MainframeMCPServer()
-    asyncio.run(server.run())
+    asyncio.run(main())
 
 if __name__ == "__main__":
     main()
